@@ -15,7 +15,7 @@ import "android.speech.RecognizerIntent"
 
 local updateURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/version.txt"
 local downloadURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/main.lua"
-local defaultVersion = "1.0"
+local defaultVersion = "2.0"
 
 local currentDir = "/storage/emulated/0/解说/Plugins/Roman Urdu Typer"
 local mainPath = currentDir .. "/main.lua"
