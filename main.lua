@@ -16,7 +16,7 @@ import "android.speech.RecognizerIntent"
 local updateURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/version.txt"
 local downloadURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/main.lua"
 local dictURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/roman_urdu_.txt"
-local defaultVersion = "3.0"
+local defaultVersion = "3.5"
 
 local currentDir = "/storage/emulated/0/解说/Plugins/Roman Urdu Typer"
 local mainPath = currentDir .. "/main.lua"
@@ -42,7 +42,6 @@ local function getCurrentVersion()
 end
 
 local currentVersion = getCurrentVersion()
-
 local changeTable = {}
 
 function loadDictionary()
@@ -95,20 +94,20 @@ local activeDialog = nil
 function showDictionaryDialog()
     local dlgAdd = LuaDialog(service)
     activeDialog = dlgAdd
-    dlgAdd.setTitle("Add to Dictionary")
+    dlgAdd.setTitle("Add New Entry")
     local layout = {LinearLayout; orientation="vertical"; padding="20dp";
-        {EditText; id="wrongWord"; hint="Ghalat lafz (Wrong word)"; layout_width="fill"; layout_marginBottom="10dp"};
-        {EditText; id="correctWord"; hint="Sahi lafz (Correct word)"; layout_width="fill"; layout_marginBottom="15dp"};
-        {Button; text="Add Word"; layout_width="fill"; layout_marginBottom="10dp"; onClick=function()
+        {EditText; id="wrongWord"; hint="Incorrect word"; layout_width="fill"; layout_marginBottom="10dp"};
+        {EditText; id="correctWord"; hint="Correct word"; layout_width="fill"; layout_marginBottom="15dp"};
+        {Button; text="Add to Dictionary"; layout_width="fill"; layout_marginBottom="10dp"; onClick=function()
             if addToDictionary(wrongWord.getText().toString(), correctWord.getText().toString()) then
-                service.speak("Lafz dictionary mein shamil ho gaya")
+                service.speak("Word added to dictionary")
                 wrongWord.setText("") 
                 correctWord.setText("")
             else
-                service.speak("Dono khane pur karein")
+                service.speak("Please fill in both fields")
             end
         end};
-        {Button; text="Back to Main Menu"; layout_width="fill"; onClick=function() 
+        {Button; text="Close"; layout_width="fill"; onClick=function() 
             dlgAdd.dismiss() 
         end}
     }
@@ -119,7 +118,7 @@ end
 function showDictionaryList()
     local listDlg = LuaDialog(service)
     activeDialog = listDlg
-    listDlg.setTitle("Dictionary (Long Press to Delete)")
+    listDlg.setTitle("Dictionary (Long press to delete)")
     
     local displayItems = {}
     local keys = {}
@@ -130,7 +129,7 @@ function showDictionaryList()
 
     local layout = {LinearLayout; orientation="vertical"; padding="15dp";
         {ListView; id="dictList"; layout_width="fill"; layout_weight="1"; layout_marginBottom="10dp"};
-        {Button; text="Back to Main Menu"; layout_width="fill"; onClick=function() 
+        {Button; text="Close"; layout_width="fill"; onClick=function() 
             listDlg.dismiss() 
         end}
     }
@@ -143,7 +142,7 @@ function showDictionaryList()
         local keyToDelete = keys[position + 1]
         changeTable[keyToDelete] = nil
         saveDictionary()
-        service.speak("Lafz delete ho gaya")
+        service.speak("Word deleted")
         listDlg.dismiss()
         showDictionaryList() 
         return true
@@ -158,39 +157,33 @@ local editText = service.getEditText()
 function startVoiceTyping()
     local context = service.getApplicationContext()
     local speechRec = SpeechRecognizer.createSpeechRecognizer(context)
-    
     local listener = RecognitionListener {
         onResults = function(results)
             local resultsArray = results.getParcelableArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if resultsArray and resultsArray.size() > 0 then
                 local spokenText = resultsArray.get(0)
-                
                 for wrongWord, correctWord in pairs(changeTable) do
                     local pattern = getAccuratePattern(wrongWord)
                     spokenText = spokenText:gsub(pattern, correctWord)
                 end
-                
                 spokenText = spokenText:gsub("%s([?,!])", "%1")
                 if not spokenText:match("[.?!,.]$") then
                     spokenText = spokenText .. ". "
                 end
-                
                 service.insertText(editText, spokenText)
                 service.speak(spokenText)
             end
             speechRec.destroy()
         end,
         onError = function(errorCode)
-            service.asyncSpeak("Awaz samajh nahi aayi, dobara koshish karein")
+            service.asyncSpeak("Voice input error, please try again")
             speechRec.destroy()
             return false
         end,
     }
-    
     local intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
     intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
     intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "en-PK") 
-    
     speechRec.setRecognitionListener(listener)
     speechRec.startListening(intent)
 end
@@ -205,7 +198,7 @@ else
     dlg.setTitle("Roman Urdu Typer")
     local layout = {LinearLayout; orientation="vertical"; padding="30dp";
         {TextView; text="Created by Good Time Team"; textSize="16sp"; layout_gravity="center"; layout_marginBottom="10dp"};
-        {TextView; text="Current Version: " .. currentVersion; textSize="14sp"; layout_gravity="center"; layout_marginBottom="25dp"};
+        {TextView; text="Version: " .. currentVersion; textSize="14sp"; layout_gravity="center"; layout_marginBottom="25dp"};
         {Button; text="Add to Dictionary"; layout_width="fill"; layout_marginBottom="10dp"; onClick=showDictionaryDialog};
         {Button; text="View Dictionary"; layout_width="fill"; layout_marginBottom="10dp"; onClick=showDictionaryList};
         {Button; text="Exit"; layout_width="fill"; onClick=function() dlg.dismiss() end}
@@ -214,7 +207,6 @@ else
     dlg.show()
 end
 
--- Advanced Auto Updater with Dictionary Sync
 local function checkUpdate()
     Http.get(updateURL, function(code, response)
         if code == 200 and response then
@@ -222,62 +214,48 @@ local function checkUpdate()
             if onlineVersion ~= currentVersion then
                 Handler(Looper.getMainLooper()).post(Runnable{run=function()
                     local updateAlertDlg = AlertDialog.Builder(service or activity)
-                    updateAlertDlg.setTitle("Update Available!")
-                    updateAlertDlg.setMessage("Naya update dastyab hai!\nServer Version: " .. onlineVersion .. "\nAap ka Version: " .. currentVersion)
-                    updateAlertDlg.setPositiveButton("Update Karein", {onClick=function(v)
+                    updateAlertDlg.setTitle("Update Available")
+                    updateAlertDlg.setMessage("A new version (" .. onlineVersion .. ") is available. Would you like to update?")
+                    updateAlertDlg.setPositiveButton("Update", {onClick=function(v)
                         v.dismiss()
-                        Toast.makeText(service, "Updating plugin & dictionary...", 0).show()
-                        
-                        -- 1. Download New main.lua
+                        Toast.makeText(service, "Updating...", 0).show()
                         Http.get(downloadURL, function(c, content)
                             if c == 200 and content then
                                 local f = io.open(mainPath, "w")
                                 if f then f:write(content) f:close() end
-                                
-                                -- 2. Download Online Dictionary and Merge
                                 Http.get(dictURL, function(dc, dContent)
                                     if dc == 200 and dContent and dContent ~= "" then
                                         local onlineFunc = loadstring("return " .. dContent)
                                         if onlineFunc then
                                             local onlineTable = onlineFunc()
                                             if type(onlineTable) == "table" then
-                                                loadDictionary() -- Local dictionary load karein
+                                                loadDictionary()
                                                 for wrong, correct in pairs(onlineTable) do
-                                                    changeTable[wrong] = correct -- Online words local mein merge karein
+                                                    changeTable[wrong] = correct
                                                 end
-                                                saveDictionary() -- Merged data save karein
+                                                saveDictionary()
                                             end
                                         end
                                     end
-                                    
-                                    -- 3. Update Local version.txt
                                     local vf = io.open(versionPath, "w")
                                     if vf then vf:write(onlineVersion) vf:close() end
-                                    
-                                    if activeDialog then
-                                        pcall(function() activeDialog.dismiss() end)
-                                    end
-                                    
-                                    -- Success Message
+                                    if activeDialog then pcall(function() activeDialog.dismiss() end) end
                                     Handler(Looper.getMainLooper()).postDelayed(Runnable{run=function()
                                         local successDialog = AlertDialog.Builder(service or activity)
                                         successDialog.setTitle("Update Successful")
-                                        successDialog.setMessage("Plugin aur Dictionary کامیابی سے اپڈیٹ ہو چکے ہیں (Version " .. onlineVersion .. ").\nBaraye meharbani plugin dobara open karein.")
-                                        successDialog.setPositiveButton("OK", {onClick=function(v2)
-                                            v2.dismiss()
-                                        end})
+                                        successDialog.setMessage("Plugin updated successfully to version " .. onlineVersion .. ". Please restart the plugin.")
+                                        successDialog.setPositiveButton("OK", nil)
                                         local d2 = successDialog.create()
                                         d2.getWindow().setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
-                                        d2.setCancelable(false)
                                         d2.show()
                                     end}, 500)
                                 end)
                             else
-                                Toast.makeText(service, "Download failed!", 1).show()
+                                Toast.makeText(service, "Update failed!", 1).show()
                             end
                         end)
                     end})
-                    updateAlertDlg.setNegativeButton("Baad Mein", nil)
+                    updateAlertDlg.setNegativeButton("Later", nil)
                     local d1 = updateAlertDlg.create()
                     d1.getWindow().setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
                     d1.show()
