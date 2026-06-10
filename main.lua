@@ -15,7 +15,8 @@ import "android.speech.RecognizerIntent"
 
 local updateURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/version.txt"
 local downloadURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/main.lua"
-local defaultVersion = "2.0"
+local dictURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/roman_urdu_.txt"
+local defaultVersion = "3.0"
 
 local currentDir = "/storage/emulated/0/解说/Plugins/Roman Urdu Typer"
 local mainPath = currentDir .. "/main.lua"
@@ -81,7 +82,6 @@ function addToDictionary(wrongWord, correctWord)
     return false
 end
 
--- Case-Insensitive Pattern Generator
 function getAccuratePattern(word)
     local s = word:gsub("([%(%)%.%%%+%-%*%?%[%^%$])", "%%%1")
     s = s:gsub("%a", function(c)
@@ -116,7 +116,6 @@ function showDictionaryDialog()
     dlgAdd.show()
 end
 
--- Dictionary List Window
 function showDictionaryList()
     local listDlg = LuaDialog(service)
     activeDialog = listDlg
@@ -154,7 +153,6 @@ function showDictionaryList()
     listDlg.show()
 end
 
--- Voice Typing Core Function
 local editText = service.getEditText()
 
 function startVoiceTyping()
@@ -216,7 +214,7 @@ else
     dlg.show()
 end
 
--- Updater Logic
+-- Advanced Auto Updater with Dictionary Sync
 local function checkUpdate()
     Http.get(updateURL, function(code, response)
         if code == 200 and response then
@@ -228,32 +226,52 @@ local function checkUpdate()
                     updateAlertDlg.setMessage("Naya update dastyab hai!\nServer Version: " .. onlineVersion .. "\nAap ka Version: " .. currentVersion)
                     updateAlertDlg.setPositiveButton("Update Karein", {onClick=function(v)
                         v.dismiss()
-                        Toast.makeText(service, "Downloading...", 0).show()
+                        Toast.makeText(service, "Updating plugin & dictionary...", 0).show()
                         
+                        -- 1. Download New main.lua
                         Http.get(downloadURL, function(c, content)
                             if c == 200 and content then
                                 local f = io.open(mainPath, "w")
                                 if f then f:write(content) f:close() end
                                 
-                                local vf = io.open(versionPath, "w")
-                                if vf then vf:write(onlineVersion) vf:close() end
-                                
-                                if activeDialog then
-                                    pcall(function() activeDialog.dismiss() end)
-                                end
-                                
-                                Handler(Looper.getMainLooper()).postDelayed(Runnable{run=function()
-                                    local successDialog = AlertDialog.Builder(service or activity)
-                                    successDialog.setTitle("Update Successful")
-                                    successDialog.setMessage("Plugin successfully update ho gaya hai (Version " .. onlineVersion .. ").\nBaraye meharbani changes apply karne ke liye plugin dobara open karein.")
-                                    successDialog.setPositiveButton("OK", {onClick=function(v2)
-                                        v2.dismiss()
-                                    end})
-                                    local d2 = successDialog.create()
-                                    d2.getWindow().setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
-                                    d2.setCancelable(false)
-                                    d2.show()
-                                end}, 500)
+                                -- 2. Download Online Dictionary and Merge
+                                Http.get(dictURL, function(dc, dContent)
+                                    if dc == 200 and dContent and dContent ~= "" then
+                                        local onlineFunc = loadstring("return " .. dContent)
+                                        if onlineFunc then
+                                            local onlineTable = onlineFunc()
+                                            if type(onlineTable) == "table" then
+                                                loadDictionary() -- Local dictionary load karein
+                                                for wrong, correct in pairs(onlineTable) do
+                                                    changeTable[wrong] = correct -- Online words local mein merge karein
+                                                end
+                                                saveDictionary() -- Merged data save karein
+                                            end
+                                        end
+                                    end
+                                    
+                                    -- 3. Update Local version.txt
+                                    local vf = io.open(versionPath, "w")
+                                    if vf then vf:write(onlineVersion) vf:close() end
+                                    
+                                    if activeDialog then
+                                        pcall(function() activeDialog.dismiss() end)
+                                    end
+                                    
+                                    -- Success Message
+                                    Handler(Looper.getMainLooper()).postDelayed(Runnable{run=function()
+                                        local successDialog = AlertDialog.Builder(service or activity)
+                                        successDialog.setTitle("Update Successful")
+                                        successDialog.setMessage("Plugin aur Dictionary کامیابی سے اپڈیٹ ہو چکے ہیں (Version " .. onlineVersion .. ").\nBaraye meharbani plugin dobara open karein.")
+                                        successDialog.setPositiveButton("OK", {onClick=function(v2)
+                                            v2.dismiss()
+                                        end})
+                                        local d2 = successDialog.create()
+                                        d2.getWindow().setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+                                        d2.setCancelable(false)
+                                        d2.show()
+                                    end}, 500)
+                                end)
                             else
                                 Toast.makeText(service, "Download failed!", 1).show()
                             end
