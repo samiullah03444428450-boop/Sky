@@ -12,11 +12,12 @@ import "android.net.Uri"
 import "android.speech.SpeechRecognizer"
 import "android.speech.RecognitionListener"
 import "android.speech.RecognizerIntent"
+import "android.text.TextWatcher"
 
 local updateURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/version.txt"
 local downloadURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/main.lua"
 local dictURL = "https://raw.githubusercontent.com/samiullah03444428450-boop/Sky/main/roman_urdu_.txt"
-local defaultVersion = "4.0"
+local defaultVersion = "4.5"
 
 local currentDir = "/storage/emulated/0/解说/Plugins/Roman Urdu Typer"
 local mainPath = currentDir .. "/main.lua"
@@ -115,19 +116,46 @@ function showDictionaryDialog()
     dlgAdd.show()
 end
 
+function showEditDialog(oldWrong, oldCorrect)
+    local dlgEdit = LuaDialog(service)
+    activeDialog = dlgEdit
+    dlgEdit.setTitle("Edit Word")
+    local layout = {LinearLayout; orientation="vertical"; padding="20dp";
+        {EditText; id="editWrongWord"; text=oldWrong; hint="Incorrect word"; layout_width="fill"; layout_marginBottom="10dp"};
+        {EditText; id="editCorrectWord"; text=oldCorrect; hint="Correct word"; layout_width="fill"; layout_marginBottom="15dp"};
+        {Button; text="Save Changes"; layout_width="fill"; layout_marginBottom="10dp"; onClick=function()
+            local newWrong = editWrongWord.getText().toString():match("^%s*(.-)%s*$")
+            local newCorrect = editCorrectWord.getText().toString():match("^%s*(.-)%s*$")
+
+            if newWrong ~= "" and newCorrect ~= "" then
+                if oldWrong ~= newWrong then
+                    changeTable[oldWrong] = nil
+                end
+                changeTable[newWrong] = newCorrect
+                saveDictionary()
+                service.speak("Word updated")
+                dlgEdit.dismiss()
+                showDictionaryList() 
+            else
+                service.speak("Please fill in both fields")
+            end
+        end};
+        {Button; text="Cancel"; layout_width="fill"; onClick=function()
+            dlgEdit.dismiss()
+            showDictionaryList()
+        end}
+    }
+    dlgEdit.setView(loadlayout(layout))
+    dlgEdit.show()
+end
+
 function showDictionaryList()
     local listDlg = LuaDialog(service)
     activeDialog = listDlg
-    listDlg.setTitle("Dictionary (Long press to delete)")
+    listDlg.setTitle("Dictionary (Long press for options)")
     
-    local displayItems = {}
-    local keys = {}
-    for wrong, correct in pairs(changeTable) do 
-        table.insert(displayItems, wrong .. " -> " .. correct)
-        table.insert(keys, wrong)
-    end
-
     local layout = {LinearLayout; orientation="vertical"; padding="15dp";
+        {EditText; id="searchBox"; hint="Search word..."; layout_width="fill"; layout_marginBottom="10dp"};
         {ListView; id="dictList"; layout_width="fill"; layout_weight="1"; layout_marginBottom="10dp"};
         {Button; text="Close"; layout_width="fill"; onClick=function() 
             listDlg.dismiss() 
@@ -135,16 +163,62 @@ function showDictionaryList()
     }
     
     local view = loadlayout(layout)
-    local adapter = ArrayAdapter(service, android.R.layout.simple_list_item_1, displayItems)
-    dictList.setAdapter(adapter)
     
-    dictList.onItemLongClick = function(parent, view, position, id)
-        local keyToDelete = keys[position + 1]
-        changeTable[keyToDelete] = nil
-        saveDictionary()
-        service.speak("Word deleted")
-        listDlg.dismiss()
-        showDictionaryList() 
+    local allKeys = {}
+    local allDisplay = {}
+    for wrong, correct in pairs(changeTable) do 
+        table.insert(allKeys, wrong)
+        table.insert(allDisplay, wrong .. " -> " .. correct)
+    end
+
+    local currentKeys = {}
+
+    local function filterList(query)
+        query = query:lower()
+        local displayItems = {}
+        currentKeys = {}
+        for i=1, #allDisplay do
+            if allDisplay[i]:lower():find(query, 1, true) then
+                table.insert(displayItems, allDisplay[i])
+                table.insert(currentKeys, allKeys[i])
+            end
+        end
+        local adapter = ArrayAdapter(service, android.R.layout.simple_list_item_1, displayItems)
+        dictList.setAdapter(adapter)
+    end
+
+    searchBox.addTextChangedListener(TextWatcher{
+        onTextChanged=function(s, start, before, count)
+            filterList(tostring(s))
+        end,
+        beforeTextChanged=function() end,
+        afterTextChanged=function() end
+    })
+
+    filterList("") 
+    
+    dictList.onItemLongClick = function(parent, v, position, id)
+        local keyToEdit = currentKeys[position + 1]
+        local currentCorrect = changeTable[keyToEdit]
+        
+        local optionsDlg = AlertDialog.Builder(service or activity)
+        optionsDlg.setTitle("Options")
+        local options = {"Edit", "Delete"}
+        optionsDlg.setItems(options, {onClick=function(d, which)
+            if which == 0 then 
+                listDlg.dismiss()
+                showEditDialog(keyToEdit, currentCorrect)
+            elseif which == 1 then 
+                changeTable[keyToEdit] = nil
+                saveDictionary()
+                service.speak("Word deleted")
+                listDlg.dismiss()
+                showDictionaryList() 
+            end
+        end})
+        local d = optionsDlg.create()
+        d.getWindow().setType(WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY)
+        d.show()
         return true
     end
 
